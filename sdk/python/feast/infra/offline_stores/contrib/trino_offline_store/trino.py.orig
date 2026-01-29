@@ -593,16 +593,6 @@ WITH entity_dataframe AS (
         {% for feature in featureview.features %}
             {{ feature }} as {% if full_feature_names %}{{ featureview.name }}__{{featureview.field_mapping.get(feature, feature)}}{% else %}{{ featureview.field_mapping.get(feature, feature) }}{% endif %}{% if loop.last %}{% else %}, {% endif %}
         {% endfor %}
-        {% if featureview.entities %}
-            ,CONCAT(
-                {% for entity in featureview.entities %}
-                    CAST({{entity}} AS VARCHAR),
-                {% endfor %}
-                CAST({{featureview.timestamp_field}} AS VARCHAR)
-            ) AS {{featureview.name}}__entity_row_unique_id
-            {% else %}
-            ,CAST({{featureview.timestamp_field}} AS VARCHAR) AS {{featureview.name}}__entity_row_unique_id
-            {% endif %} 
     FROM (
         {{ featureview.table_subquery }}
     ) AS {{ featureview.name }}__subquery
@@ -613,11 +603,10 @@ WITH entity_dataframe AS (
 ),
 {{ featureview.name }}__base AS (
     SELECT
-        subquery.*
-        -- entity_dataframe.entity_timestamp,
-        -- entity_dataframe.{{featureview.name}}__entity_row_unique_id
+        subquery.*,
+        entity_dataframe.entity_timestamp,
+        entity_dataframe.{{featureview.name}}__entity_row_unique_id
     FROM {{ featureview.name }}__subquery AS subquery
-    /*    
     INNER JOIN {{ featureview.name }}__entity_dataframe AS entity_dataframe
     ON TRUE
         AND subquery.event_timestamp <= entity_dataframe.entity_timestamp
@@ -627,7 +616,6 @@ WITH entity_dataframe AS (
         {% for entity in featureview.entities %}
         AND subquery.{{ entity }} = entity_dataframe.{{ entity }}
         {% endfor %}
-    */    
 ),
 /*
  2. If the `created_timestamp_column` has been set, we need to
@@ -674,9 +662,8 @@ WITH entity_dataframe AS (
  we can join again the data back to the original "base" dataset
 */
 {{ featureview.name }}__cleaned AS (
-    SELECT base.* -- , {{featureview.name}}__entity_row_unique_id
+    SELECT base.*, {{featureview.name}}__entity_row_unique_id
     FROM {{ featureview.name }}__base as base
-    /*    
     INNER JOIN {{ featureview.name }}__latest
     USING(
         {{featureview.name}}__entity_row_unique_id,
@@ -685,7 +672,6 @@ WITH entity_dataframe AS (
             ,created_timestamp
         {% endif %}
     )
-    */
 ){% if loop.last %}{% else %}, {% endif %}
 {% endfor %}
 /*
